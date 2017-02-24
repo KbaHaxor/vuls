@@ -257,7 +257,7 @@ func (o *redhat) scanUnsecurePackagesUsingYumCheckUpdate() (models.VulnInfos, er
 		cmd = fmt.Sprintf(cmd, "")
 	}
 
-	r := o.exec(util.PrependProxyEnv(cmd), sudo)
+	r := o.exec(util.PrependProxyEnv(cmd), noSudo)
 	if !r.isSuccess(0, 100) {
 		//returns an exit code of 100 if there are available updates.
 		return nil, fmt.Errorf("Failed to SSH: %s", r)
@@ -612,9 +612,8 @@ func (o *redhat) scanUnsecurePackagesUsingYumPluginSecurity() (models.VulnInfos,
 	advIDPackNamesList, err := o.parseYumUpdateinfoListAvailable(r.Stdout)
 
 	// get package name, version, rel to be upgrade.
-	//  cmd = "yum check-update --security"
 	cmd = "LANGUAGE=en_US.UTF-8 yum --color=never check-update"
-	r = o.exec(util.PrependProxyEnv(cmd), o.sudo())
+	r = o.exec(util.PrependProxyEnv(cmd), noSudo)
 	if !r.isSuccess(0, 100) {
 		//returns an exit code of 100 if there are available updates.
 		return nil, fmt.Errorf("Failed to SSH: %s", r)
