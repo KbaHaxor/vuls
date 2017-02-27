@@ -297,7 +297,10 @@ func (o *redhat) scanUnsecurePackagesUsingYumCheckUpdate() (models.VulnInfos, er
 			n := fmt.Sprintf("%s-%s-%s",
 				p.Name, p.NewVersion, p.NewRelease)
 			if name == n {
-				o.Packages[i].Changelog = *clog
+				o.Packages[i].Changelog = models.Changelog{
+					Contents: *clog,
+					Method:   models.ChangelogExactMatchStr,
+				}
 				break
 			}
 		}

@@ -447,7 +447,7 @@ func (o *debian) scanVulnInfos(upgradablePacks []models.PackageInfo, meta *cache
 				func(p models.PackageInfo) {
 					changelog := o.getChangelogCache(meta, p)
 					if 0 < len(changelog) {
-						_, cveIDs, _ := o.getCveIDsFromChangelog(changelog, p.Name, p.Version)
+						cveIDs, _ := o.getCveIDsFromChangelog(changelog, p.Name, p.Version)
 						resChan <- struct {
 							models.PackageInfo
 							DetectedCveIDs
@@ -563,20 +563,13 @@ func (o *debian) scanPackageCveIDs(pack models.PackageInfo) ([]DetectedCveID, er
 	}
 
 	stdout := strings.Replace(r.Stdout, "\r", "", -1)
-	verFound, cveIDs, changelog := o.getCveIDsFromChangelog(
+	cveIDs, clog := o.getCveIDsFromChangelog(
 		stdout, pack.Name, pack.Version)
 
-	if 0 < len(strings.TrimSpace(changelog)) {
-		err := cache.DB.PutChangelog(o.getServerInfo().GetServerName(), pack.Name, changelog)
+	if clog.Method != models.FailedToGetChangelog {
+		err := cache.DB.PutChangelog(o.getServerInfo().GetServerName(), pack.Name, clog.Contents)
 		if err != nil {
 			return nil, fmt.Errorf("Failed to put changelog into cache")
-		}
-
-		for i, p := range o.Packages {
-			if p.Name == pack.Name {
-				o.Packages[i].Changelog = changelog
-				o.Packages[i].VerFoundInChangelog = verFound
-			}
 		}
 	}
 
@@ -585,15 +578,15 @@ func (o *debian) scanPackageCveIDs(pack models.PackageInfo) ([]DetectedCveID, er
 }
 
 func (o *debian) getCveIDsFromChangelog(changelog string,
-	packName string, versionOrLater string) (bool, []DetectedCveID, string) {
+	packName string, versionOrLater string) ([]DetectedCveID, models.Changelog) {
 
 	if cveIDs, relevantChangelog, err := o.parseChangelog(changelog, packName, versionOrLater); err == nil {
-		return true, cveIDs, relevantChangelog
+		return cveIDs, relevantChangelog
 	}
 
 	ver := strings.Split(versionOrLater, "ubuntu")[0]
 	if cveIDs, relevantChangelog, err := o.parseChangelog(changelog, packName, ver); err == nil {
-		return true, cveIDs, relevantChangelog
+		return cveIDs, relevantChangelog
 	}
 
 	splittedByColon := strings.Split(versionOrLater, ":")
@@ -602,14 +595,17 @@ func (o *debian) getCveIDsFromChangelog(changelog string,
 	}
 	cveIDs, relevantChangelog, err := o.parseChangelog(changelog, packName, ver)
 	if err == nil {
-		return true, cveIDs, relevantChangelog
+		return cveIDs, relevantChangelog
 	}
 
 	// Only logging the error.
 	o.log.Error(err)
 
 	// If the version is not in changelog, return entire changelog to put into cache
-	return false, []DetectedCveID{}, changelog
+	return []DetectedCveID{}, models.Changelog{
+		Contents: changelog,
+		Method:   models.FailedToFindVersionInChangelog,
+	}
 }
 
 // DetectedCveID has CveID, Confidence and DetectionMethod fields
@@ -627,7 +623,7 @@ var cveRe = regexp.MustCompile(`(CVE-\d{4}-\d{4,})`)
 
 // Collect CVE-IDs included in the changelog.
 // The version which specified in argument(versionOrLater) is excluded.
-func (o *debian) parseChangelog(changelog string, packName string, versionOrLater string) ([]DetectedCveID, string, error) {
+func (o *debian) parseChangelog(changelog string, packName string, versionOrLater string) ([]DetectedCveID, models.Changelog, error) {
 
 	buf, cveIDs := []string{}, []string{}
 	stopRe := regexp.MustCompile(fmt.Sprintf(`\(%s\)`, regexp.QuoteMeta(versionOrLater)))
@@ -655,22 +651,39 @@ func (o *debian) parseChangelog(changelog string, packName string, versionOrLate
 		}
 	}
 	if !stopLineFound && !lenientStopLineFound {
-		return nil, "", fmt.Errorf(
-			"Failed to scan CVE IDs. The version is not in changelog. name: %s, version: %s",
-			packName,
-			versionOrLater,
-		)
+		return nil, models.Changelog{
+				Contents: "",
+				Method:   models.FailedToFindVersionInChangelog,
+			},
+			fmt.Errorf(
+				"Failed to scan CVE IDs. The version is not in changelog. name: %s, version: %s",
+				packName,
+				versionOrLater,
+			)
+	}
+
+	confidence := models.ChangelogExactMatch
+	if lenientStopLineFound {
+		confidence = models.ChangelogLenientMatch
+	}
+
+	clog := models.Changelog{
+		Contents: strings.Join(buf, "\n"),
+		Method:   string(confidence.DetectionMethod),
+	}
+
+	for i, p := range o.Packages {
+		if p.Name == packName {
+			o.Packages[i].Changelog = clog
+		}
 	}
 
 	cves := []DetectedCveID{}
 	for _, id := range cveIDs {
-		confidence := models.ChangelogExactMatch
-		if lenientStopLineFound {
-			confidence = models.ChangelogLenientMatch
-		}
 		cves = append(cves, DetectedCveID{id, confidence})
 	}
-	return cves, strings.Join(buf, "\n"), nil
+
+	return cves, clog, nil
 }
 
 func (o *debian) splitAptCachePolicy(stdout string) map[string]string {
