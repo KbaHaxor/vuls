@@ -266,10 +266,10 @@ const (
 	// ChangelogLenientMatchStr is a String representation of ChangelogLenientMatch
 	ChangelogLenientMatchStr = "ChangelogLenientMatch"
 
-	// FailedToGetChangelog is a String representation of ChangelogLenientMatch
+	// FailedToGetChangelog is a String representation of FailedToGetChangelog
 	FailedToGetChangelog = "FailedToGetChangelog"
 
-	// FailedToFindVersionInChangelog is a String representation of ChangelogLenientMatch
+	// FailedToFindVersionInChangelog is a String representation of FailedToFindVersionInChangelog
 	FailedToFindVersionInChangelog = "FailedToFindVersionInChangelog"
 )
 
@@ -307,6 +307,9 @@ func (v *VulnInfo) NilSliceToEmpty() {
 	}
 	if v.DistroAdvisories == nil {
 		v.DistroAdvisories = []DistroAdvisory{}
+	}
+	if v.Packages == nil {
+		v.Packages = PackageInfoList{}
 	}
 }
 
