@@ -584,6 +584,7 @@ func (o *debian) getCveIDsFromChangelog(changelog string,
 		return cveIDs, relevantChangelog
 	}
 
+	//TODO switch case ubuntu, debian
 	ver := strings.Split(versionOrLater, "ubuntu")[0]
 	if cveIDs, relevantChangelog, err := o.parseChangelog(changelog, packName, ver); err == nil {
 		return cveIDs, relevantChangelog
@@ -595,6 +596,11 @@ func (o *debian) getCveIDsFromChangelog(changelog string,
 	}
 	cveIDs, relevantChangelog, err := o.parseChangelog(changelog, packName, ver)
 	if err == nil {
+		return cveIDs, relevantChangelog
+	}
+
+	ver = strings.Split(ver, "ubuntu")[0]
+	if cveIDs, relevantChangelog, err := o.parseChangelog(changelog, packName, ver); err == nil {
 		return cveIDs, relevantChangelog
 	}
 
@@ -668,7 +674,7 @@ func (o *debian) parseChangelog(changelog string, packName string, versionOrLate
 	}
 
 	clog := models.Changelog{
-		Contents: strings.Join(buf, "\n"),
+		Contents: strings.Join(buf[0:len(buf)-1], "\n"),
 		Method:   string(confidence.DetectionMethod),
 	}
 
